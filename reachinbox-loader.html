@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ReachInbox 2.0 — Loader</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{ --blue:#2A6BEF; --ink:#0c1322; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;background:#fff;overflow:hidden}
+  body{font-family:"Manrope",system-ui,sans-serif;display:flex;align-items:center;justify-content:center;position:relative}
+
+  #rays{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:0}
+  .stage{position:fixed;inset:0;z-index:2;pointer-events:none}
+
+  #glow{position:absolute;left:50%;top:50%;width:520px;height:520px;margin:-260px 0 0 -260px;
+    border-radius:50%;background:radial-gradient(circle,rgba(42,107,239,.20)0%,rgba(42,107,239,.07)40%,rgba(42,107,239,0)70%);
+    opacity:0;will-change:transform,opacity}
+
+  #icon{position:absolute;left:50%;top:50%;width:461px;height:444px;
+    transform-origin:center center;will-change:transform,opacity}
+  #icon svg{width:100%;height:100%;overflow:visible;display:block}
+
+  #lockword{position:absolute;left:50%;top:50%;height:62px;width:auto;
+    opacity:0;will-change:transform,opacity;overflow:visible}
+  #lockword svg{height:100%;width:auto;display:block;overflow:visible}
+  .ltr{fill:var(--ink)}
+  #ver{fill:var(--blue)}
+
+  .ui{position:fixed;z-index:5;left:0;right:0;bottom:26px;display:flex;justify-content:center}
+  .btn{pointer-events:auto;cursor:pointer;font-family:inherit;font-weight:700;font-size:13px;letter-spacing:.02em;
+    color:#2456c9;background:rgba(42,107,239,.08);border:1px solid rgba(42,107,239,.28);
+    padding:9px 16px;border-radius:999px;backdrop-filter:blur(6px);transition:background .2s,transform .15s}
+  .btn:hover{background:rgba(42,107,239,.18)}
+  .btn:active{transform:scale(.96)}
+</style>
+</head>
+<body>
+  <canvas id="rays"></canvas>
+
+  <div class="stage">
+    <div id="glow"></div>
+
+    <div id="icon">
+      <svg id="isvg" viewBox="-104 -96 434 418" xmlns="http://www.w3.org/2000/svg">
+        <g id="grid"></g>
+        <g id="guideW"></g>
+        <rect id="box" x="-9.191" y="0" width="244.383" height="226" rx="25.952" fill="#000"/>
+        <path id="mark" d="" fill="#fff"/>
+        <g id="guideR"></g>
+      </svg>
+    </div>
+
+    <div id="lockword">
+      <svg id="wsvg" viewBox="285 60 1200 122" xmlns="http://www.w3.org/2000/svg">
+        <g id="letters"></g>
+        <path id="ver" d="M1332.9 159.6V174H1262.98V164.72L1296.74 128.24C1309.54 114.32 1314.5 106.8 1314.5 97.04C1314.5 86.32 1306.98 78.8 1295.94 78.8C1283.94 78.8 1275.94 86.64 1275.94 98.64H1260.1C1260.1 78.64 1275.14 64.24 1296.58 64.24C1316.74 64.24 1331.46 77.36 1331.46 95.12C1331.46 107.44 1326.82 116.08 1309.06 134.96L1287.3 159.6H1332.9ZM1374.66 162.48C1374.66 169.68 1369.7 174.8 1362.34 174.8C1355.14 174.8 1350.02 169.68 1350.02 162.48C1350.02 154.96 1355.14 149.84 1362.34 149.84C1369.7 149.84 1374.66 154.96 1374.66 162.48ZM1387.81 120.08C1387.81 84.24 1402.05 64.24 1427.65 64.24C1453.25 64.24 1467.65 84.24 1467.65 120.08C1467.65 155.92 1453.57 175.6 1427.65 175.6C1401.73 175.6 1387.81 155.92 1387.81 120.08ZM1404.45 120.08C1404.45 146.8 1412.45 161.04 1427.65 161.04C1442.85 161.04 1451.01 146.96 1451.01 120.08C1451.01 93.04 1442.85 78.8 1427.65 78.8C1412.77 78.8 1404.45 93.04 1404.45 120.08Z"/>
+      </svg>
+    </div>
+  </div>
+
+  <div class="ui"><button class="btn" id="replay">↻ Replay</button></div>
+
+<script>
+/* ============================================================
+   1.  Blue light-rays shader on white
+   ============================================================ */
+const canvas=document.getElementById('rays');
+const gl=canvas.getContext('webgl',{antialias:false,alpha:false});
+const VERT='attribute vec2 a_pos;void main(){gl_Position=vec4(a_pos,0.,1.);}';
+const FRAG=`
+precision highp float;
+uniform vec2 iRes; uniform float iTime; uniform float uBoost;
+float hash(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
+float noise(vec2 p){vec2 i=floor(p),f=fract(p);float a=hash(i),b=hash(i+vec2(1.,0.)),c=hash(i+vec2(0.,1.)),d=hash(i+vec2(1.,1.));vec2 u=f*f*(3.-2.*f);return mix(mix(a,b,u.x),mix(c,d,u.x),u.y);}
+float fbm(vec2 p){float v=0.,a=.55;for(int i=0;i<5;i++){v+=a*noise(p);p*=1.92;a*=.55;}return v;}
+void main(){
+  vec2 uv=gl_FragCoord.xy/iRes.xy;
+  vec2 p=(gl_FragCoord.xy-.5*iRes.xy)/iRes.y;
+  vec2 src=vec2(0.0,0.82);
+  vec2 dir=p-src; float dist=length(dir); float ang=atan(dir.x,-dir.y);
+  float t=iTime*0.075;
+  float r=0.0;
+  r+=fbm(vec2(ang*5.0, dist*1.0 - t*2.0));
+  r+=0.55*fbm(vec2(ang*10.0+9.0, dist*1.6 - t*1.3));
+  r+=0.30*fbm(vec2(ang*19.0+3.0, dist*2.3 - t*0.9));
+  r=pow(max(r*0.52,0.0),2.0);
+  float radial=smoothstep(1.5,0.05,dist);
+  float vert=smoothstep(-0.45,1.0,src.y-p.y);
+  float beam=r*radial*(0.30+0.70*vert);
+  float core=exp(-dist*2.3)*0.5;
+  float mid =exp(-pow(dist*1.4,2.0))*0.32;
+
+  vec3 white=vec3(1.0);
+  vec3 blue =vec3(0.165,0.420,0.937);
+  vec3 tint =white-blue;                 // removing this makes pixels read blue
+  float k=0.50+uBoost*0.40;
+  vec3 col=white - beam*k*tint;          // pale blue streaks on white
+  col -= (core*0.40+mid*0.22)*(0.7+uBoost*1.1)*tint;   // blue glow near source
+  float e=pow(length((uv-0.5)*vec2(1.05,1.0)),2.0);
+  col -= e*0.05*tint;                    // gentle cool vignette
+  col=clamp(col,0.0,1.0);
+  gl_FragColor=vec4(col,1.0);
+}`;
+function sh(t,s){const x=gl.createShader(t);gl.shaderSource(x,s);gl.compileShader(x);
+  if(!gl.getShaderParameter(x,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(x));return x;}
+const prog=gl.createProgram();gl.attachShader(prog,sh(gl.VERTEX_SHADER,VERT));gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,FRAG));
+gl.linkProgram(prog);gl.useProgram(prog);
+const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+const al=gl.getAttribLocation(prog,'a_pos');gl.enableVertexAttribArray(al);gl.vertexAttribPointer(al,2,gl.FLOAT,false,0,0);
+const U={res:gl.getUniformLocation(prog,'iRes'),time:gl.getUniformLocation(prog,'iTime'),boost:gl.getUniformLocation(prog,'uBoost')};
+function resize(){const d=Math.min(devicePixelRatio||1,2);canvas.width=innerWidth*d|0;canvas.height=innerHeight*d|0;gl.viewport(0,0,canvas.width,canvas.height);}
+addEventListener('resize',()=>{resize();layout();});resize();
+
+/* ============================================================
+   2.  Mark morph geometry (precomputed)
+   ============================================================ */
+const TEMPLATE=[["M",2],["V",1],["L",2],["C",6],["L",2],["C",6],["C",6],["V",1],["C",6],["C",6],["V",1],["C",6],["C",6],["L",2],["L",2],["C",6],["C",6],["L",2],["L",2],["C",6],["C",6],["V",1],["C",6],["C",6],["Z",0]];
+const OLDM=[163.855,161.648,103.641,124.005,142.082,117.695,148.168,107.608,148.228,101.183,142.612,100.879,142.341,87.442,129.994,77.707,120.257,68.114,110.674,65.691,108.254,63.277,105.843,60.81,103.397,161.648,60.81,169.373,54.185,175.637,46.011,175.637,37.838,175.637,31.213,169.373,31.213,161.648,69.768,31.213,64.368,34.462,59.401,39.655,57.021,44.808,54.659,51.388,55.177,56.139,59.194,56.593,59.593,59.1,61.899,71.419,73.278,80.607,82.448,89.612,91.443,96.727,98.55,103.72,105.541,112.151,113.541,167.802,59.86,168.255,59.44,173.004,55.222,179.782,54.595,185.099,57.074,190.336,59.515,193.452,64.514,193.453,69.782,161.648,193.453,169.373,186.826,175.637,178.654,175.637,170.481,175.637,163.855,169.373,163.855,161.648];
+const NEWM=[151.588,153.494,105.764,121.265,137.394,116.463,142.402,108.787,142.451,103.899,137.831,103.667,137.608,93.4425,127.448,86.0344,119.435,78.7345,111.55,76.8912,109.559,75.0544,107.576,73.1769,105.563,153.494,73.1769,159.851,68.1353,165.004,61.916,165.004,55.6967,165.004,50.655,159.851,50.655,153.494,77.8921,50.655,73.4482,53.1278,69.3616,57.079,67.4033,61.0006,65.4596,66.007,65.886,69.6229,69.1913,69.9683,69.5198,71.8757,71.4171,81.2493,80.7801,88.2412,88.3256,95.0934,95.727,100.507,101.575,105.829,107.327,112.244,113.91,154.592,69.7391,154.936,69.3937,158.55,65.9225,163.708,65.4066,167.754,67.4464,171.739,69.4555,174.11,73.5685,174.11,77.9031,153.494,174.11,159.851,169.068,165.004,162.849,165.004,156.629,165.004,151.588,159.851,151.588,153.494];
+const OLD_W=244.383,NEW_W=226,OLD_RX=25.952,NEW_RX=46.7586;
+
+const boxEl=document.getElementById('box'),markEl=document.getElementById('mark');
+const lerp=(a,b,t)=>a+(b-a)*t;
+function buildMark(mt){let i=0,o='';for(const[c,n]of TEMPLATE){let s='';for(let k=0;k<n;k++){s+=(k?' ':'')+lerp(OLDM[i],NEWM[i],mt).toFixed(3);i++;}o+=c+s;}return o;}
+let curBox={x:-9.191,w:244.383,rx:25.952};
+function setBox(rxT,wT){
+  const w=lerp(OLD_W,NEW_W,wT), x=(226-w)/2, rx=lerp(OLD_RX,NEW_RX,rxT);
+  curBox={x,w,rx};
+  boxEl.setAttribute('width',w.toFixed(3));
+  boxEl.setAttribute('x',x.toFixed(3));
+  boxEl.setAttribute('rx',rx.toFixed(3));
+  markEl.setAttribute('d',buildMark(wT));
+}
+
+/* ============================================================
+   3.  Blueprint grid + live measurement guides
+   ============================================================ */
+const SVGNS='http://www.w3.org/2000/svg';
+const mk=(t,a)=>{const e=document.createElementNS(SVGNS,t);for(const k in a)e.setAttribute(k,a[k]);return e;};
+const gridG=document.getElementById('grid'),gW=document.getElementById('guideW'),gR=document.getElementById('guideR');
+
+(function buildGrid(){
+  const step=226/8,x0=-104,x1=330,y0=-96,y1=322;
+  for(let x=Math.ceil(x0/step)*step;x<=x1;x+=step){
+    const major=Math.abs(x-113)<.5||Math.round(x/step)%4===0;
+    gridG.appendChild(mk('line',{x1:x,y1:y0,x2:x,y2:y1,stroke:'#2A6BEF','stroke-opacity':major?0.16:0.08,'stroke-width':1,'vector-effect':'non-scaling-stroke'}));
+  }
+  for(let y=Math.ceil(y0/step)*step;y<=y1;y+=step){
+    const major=Math.abs(y-113)<.5||Math.round(y/step)%4===0;
+    gridG.appendChild(mk('line',{x1:x0,y1:y,x2:x1,y2:y,stroke:'#2A6BEF','stroke-opacity':major?0.16:0.08,'stroke-width':1,'vector-effect':'non-scaling-stroke'}));
+  }
+})();
+
+const W_y=226+34;
+const wExtL=mk('line',{stroke:'#2A6BEF','stroke-width':1,'stroke-opacity':.5,'stroke-dasharray':'4 3','vector-effect':'non-scaling-stroke'});
+const wExtR=mk('line',{stroke:'#2A6BEF','stroke-width':1,'stroke-opacity':.5,'stroke-dasharray':'4 3','vector-effect':'non-scaling-stroke'});
+const wMain=mk('line',{stroke:'#2A6BEF','stroke-width':1.6,'vector-effect':'non-scaling-stroke'});
+const wTkL=mk('line',{stroke:'#2A6BEF','stroke-width':1.6,'vector-effect':'non-scaling-stroke'});
+const wTkR=mk('line',{stroke:'#2A6BEF','stroke-width':1.6,'vector-effect':'non-scaling-stroke'});
+const wPill=mk('rect',{fill:'#fff',rx:4,stroke:'#2A6BEF','stroke-opacity':.35,'stroke-width':1,'vector-effect':'non-scaling-stroke'});
+const wLab=mk('text',{fill:'#1746B8','font-family':'Manrope','font-weight':700,'font-size':13,'text-anchor':'middle'});
+gW.append(wExtL,wExtR,wMain,wTkL,wTkR,wPill,wLab);
+
+const rCirc=mk('circle',{fill:'none',stroke:'#2A6BEF','stroke-width':1.3,'stroke-dasharray':'5 4','stroke-opacity':.7,'vector-effect':'non-scaling-stroke'});
+const rLine=mk('line',{stroke:'#2A6BEF','stroke-width':1.6,'vector-effect':'non-scaling-stroke'});
+const rDot=mk('circle',{r:2.4,fill:'#2A6BEF'});
+const rPill=mk('rect',{fill:'#fff',rx:4,stroke:'#2A6BEF','stroke-opacity':.35,'stroke-width':1,'vector-effect':'non-scaling-stroke'});
+const rLab=mk('text',{fill:'#1746B8','font-family':'Manrope','font-weight':700,'font-size':13,'text-anchor':'middle'});
+gR.append(rCirc,rLine,rDot,rPill,rLab);
+
+function drawGuides(){
+  const {x,w,rx}=curBox,L=x,R=x+w,B=226;
+  wExtL.setAttribute('x1',L);wExtL.setAttribute('y1',B+4);wExtL.setAttribute('x2',L);wExtL.setAttribute('y2',W_y);
+  wExtR.setAttribute('x1',R);wExtR.setAttribute('y1',B+4);wExtR.setAttribute('x2',R);wExtR.setAttribute('y2',W_y);
+  wMain.setAttribute('x1',L);wMain.setAttribute('y1',W_y);wMain.setAttribute('x2',R);wMain.setAttribute('y2',W_y);
+  wTkL.setAttribute('x1',L);wTkL.setAttribute('y1',W_y-5);wTkL.setAttribute('x2',L);wTkL.setAttribute('y2',W_y+5);
+  wTkR.setAttribute('x1',R);wTkR.setAttribute('y1',W_y-5);wTkR.setAttribute('x2',R);wTkR.setAttribute('y2',W_y+5);
+  const cx=(L+R)/2;
+  wLab.textContent=(w/226*100).toFixed(0)+'%';wLab.setAttribute('x',cx);wLab.setAttribute('y',W_y+5);
+  wPill.setAttribute('x',cx-20);wPill.setAttribute('y',W_y-9);wPill.setAttribute('width',40);wPill.setAttribute('height',18);
+
+  const Cx=R-rx,Cy=rx;
+  rCirc.setAttribute('cx',Cx);rCirc.setAttribute('cy',Cy);rCirc.setAttribute('r',rx);
+  rLine.setAttribute('x1',Cx);rLine.setAttribute('y1',Cy);rLine.setAttribute('x2',Cx+rx*0.7071);rLine.setAttribute('y2',Cy-rx*0.7071);
+  rDot.setAttribute('cx',Cx);rDot.setAttribute('cy',Cy);
+  const lx=Cx+rx*0.42,ly=Cy-rx*0.42-9;
+  rLab.textContent='r '+rx.toFixed(0);rLab.setAttribute('x',lx);rLab.setAttribute('y',ly+4);
+  rPill.setAttribute('x',lx-19);rPill.setAttribute('y',ly-9);rPill.setAttribute('width',38);rPill.setAttribute('height',18);
+}
+
+/* ============================================================
+   4.  Wordmark letters (Manrope, vector) + 2.0
+   ============================================================ */
+const LETTERS=[{"c": "R", "d": "M309.26 174H293.31V69.89H332.17C356.095 69.89 370.45 81.635 370.45 102.37C370.45 117.305 361.025 128.76 345.22 132.53L373.495 174H354.355L328.4 134.85H309.26V174ZM309.26 83.23V121.51H331.155C345.945 121.51 354.355 114.985 354.355 102.37C354.355 89.9 345.945 83.23 331.155 83.23H309.26Z"}, {"c": "E", "d": "M454.866 160.08V174H388.891V69.89H453.851V83.81H404.841V113.39H449.501V127.31H404.841V160.08H454.866Z"}, {"c": "A", "d": "M545.199 174L535.774 148.19H490.824L481.254 174H465.159L505.034 69.89H522.579L562.164 174H545.199ZM513.444 87.29L495.609 135.285H530.989L513.444 87.29Z"}, {"c": "C", "d": "M615.384 176.175C586.384 176.175 563.909 152.54 563.909 121.8C563.909 91.205 586.384 67.715 615.384 67.715C641.484 67.715 662.364 85.115 666.279 110.78H649.314C646.414 93.96 632.784 82.07 615.529 82.07C594.939 82.07 580.439 98.745 580.439 121.8C580.439 145.145 594.939 161.82 615.529 161.82C632.784 161.82 646.414 149.785 649.314 132.965H666.279C662.364 158.775 641.484 176.175 615.384 176.175Z"}, {"c": "H", "d": "M698.806 174H682.856V69.89H698.806V113.39H751.586V69.89H767.536V174H751.586V127.31H698.806V174Z"}, {"c": "I", "d": "M806.14 174H790.19V69.89H806.14V174Z"}, {"c": "N", "d": "M898.306 174L843.496 92.655V174H828.706V69.89H846.106L899.611 149.06V69.89H914.401V174H898.306Z"}, {"c": "B", "d": "M1010.55 144.13C1010.55 163.125 996.629 174 975.024 174H936.889V69.89H972.994C994.019 69.89 1006.63 79.605 1006.63 97.15C1006.63 107.01 1000.69 115.42 990.684 119.77C1003.59 123.395 1010.55 132.24 1010.55 144.13ZM971.979 82.65H951.534V113.97H971.979C984.594 113.97 991.409 108.025 991.409 98.31C991.409 88.595 984.594 82.65 971.979 82.65ZM974.009 126.73H951.534V161.24H974.009C987.639 161.24 995.324 154.715 995.324 143.695C995.324 133.11 987.639 126.73 974.009 126.73Z"}, {"c": "O", "d": "M1074.92 176.175C1044.76 176.175 1021.99 152.54 1021.99 121.8C1021.99 91.06 1044.76 67.715 1074.92 67.715C1105.08 67.715 1127.84 91.06 1127.84 121.8C1127.84 152.54 1105.08 176.175 1074.92 176.175ZM1074.92 161.82C1096.96 161.82 1111.31 144.13 1111.31 121.8C1111.31 99.47 1096.96 82.07 1074.92 82.07C1052.88 82.07 1038.52 99.47 1038.52 121.8C1038.52 144.13 1052.88 161.82 1074.92 161.82Z"}, {"c": "X", "d": "M1149.13 174H1130.57L1164.21 120.64L1133.62 69.89H1152.03L1175.96 110.49L1200.75 69.89H1218.44L1187.27 121.22L1220.33 174H1201.62L1175.52 131.225L1149.13 174Z"}];
+const lettersG=document.getElementById('letters');
+const letterEls=LETTERS.map(L=>{const p=mk('path',{d:L.d,class:'ltr'});lettersG.appendChild(p);return p;});
+const verEl=document.getElementById('ver');
+
+/* ============================================================
+   5.  Layout (centre the final lockup)
+   ============================================================ */
+const iconEl=document.getElementById('icon'),glowEl=document.getElementById('glow'),lockEl=document.getElementById('lockword'),wsvg=document.getElementById('wsvg');
+const ICON_FINAL=92,GAP=18,FINAL=92/240,ZOOM_X=1.10;
+let finalIconX=0,finalWordX=0;
+function fitWordmark(){
+  try{
+    const lb=lettersG.getBBox(),vb=verEl.getBBox();
+    const x0=Math.min(lb.x,vb.x)-3,y0=Math.min(lb.y,vb.y)-3;
+    const x1=Math.max(lb.x+lb.width,vb.x+vb.width)+3,y1=Math.max(lb.y+lb.height,vb.y+vb.height)+3;
+    wsvg.setAttribute('viewBox',`${x0} ${y0} ${x1-x0} ${y1-y0}`);
+  }catch(e){}
+}
+function layout(){
+  fitWordmark();
+  const ww=lockEl.getBoundingClientRect().width;
+  const lockW=ICON_FINAL+GAP+ww;
+  finalIconX=-(lockW/2-ICON_FINAL/2);
+  finalWordX=(lockW/2-ww/2);
+}
+
+/* ============================================================
+   6.  Timeline
+   ============================================================ */
+const T={rise:[0,900],zoom:[900,1700],round:[1700,3100],width:[3100,4500],dock:[4500,5750],reveal:[5950,7450],settle:[7450,8450],hold:10600};
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const ph=(c,[a,b])=>clamp((c-a)/(b-a),0,1);
+const eOutCubic=t=>1-Math.pow(1-t,3);
+const eInOut=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+const eOutBack=t=>{const c=1.70158;return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2);};
+const bump=(t,a,b,c,d)=>{if(t<a)return 0;if(t<b)return(t-a)/(b-a);if(t<c)return 1;if(t<d)return 1-(t-c)/(d-c);return 0;};
+
+let start=performance.now();
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function frame(now){
+  const tSec=(now-start)/1000;
+  let c=now-start;
+  if(reduce)c=T.settle[1];
+  if(c>T.hold){start=now;c=0;}
+
+  const rxT=eInOut(ph(c,T.round)),wT=eInOut(ph(c,T.width));
+  setBox(rxT,wT);drawGuides();
+
+  let scale,ty=0,iconOp=1,iconX=0;
+  if(c<T.rise[1]){const p=ph(c,T.rise);scale=lerp(0.92,1.0,eOutBack(p));ty=lerp(58,0,eOutCubic(p));iconOp=clamp(p*1.25,0,1);}
+  else if(c<T.zoom[1]){scale=lerp(1.0,ZOOM_X,eInOut(ph(c,T.zoom)));}
+  else if(c<T.width[1]){scale=ZOOM_X;}
+  else if(c<T.dock[1]){const p=eInOut(ph(c,T.dock));scale=lerp(ZOOM_X,FINAL,p);iconX=lerp(0,finalIconX,p);}
+  else{scale=FINAL;iconX=finalIconX;}
+  iconEl.style.opacity=iconOp;
+  iconEl.style.transform=`translate(-50%,-50%) translate(${iconX.toFixed(2)}px,${ty.toFixed(2)}px) scale(${scale.toFixed(4)})`;
+
+  gridG.style.opacity=bump(c,T.zoom[0],T.zoom[1],T.dock[0],T.dock[0]+450);
+  gR.style.opacity=bump(c,T.round[0],T.round[0]+260,T.round[1]-120,T.round[1]+120);
+  gW.style.opacity=bump(c,T.width[0],T.width[0]+260,T.width[1]-120,T.width[1]+160);
+
+  const energy=clamp(ph(c,T.round)*0.5+ph(c,T.width)*0.5,0,1);
+  glowEl.style.opacity=(c<T.dock[0]?0.10+energy*0.25:lerp(0.35,0.18,ph(c,T.dock))).toFixed(3);
+  glowEl.style.transform=`scale(${(0.7+energy*0.3).toFixed(3)})`;
+
+  const rev=c>=T.reveal[0];
+  lockEl.style.opacity=rev?1:0;
+  const wx=rev?lerp(finalWordX+6,finalWordX,eInOut(ph(c,T.reveal))):finalWordX;
+  lockEl.style.transform=`translate(-50%,-50%) translateX(${wx.toFixed(2)}px)`;
+  const L0=T.reveal[0]+40,STEP=80,DUR=320;
+  for(let i=0;i<letterEls.length;i++){
+    const lp=clamp((c-(L0+i*STEP))/DUR,0,1),e=eOutCubic(lp);
+    letterEls[i].style.opacity=e;
+    letterEls[i].setAttribute('transform',`translate(0 ${lerp(15,0,e).toFixed(2)})`);
+  }
+  const vp=clamp((c-(L0+letterEls.length*STEP+60))/440,0,1),ve=eOutBack(vp);
+  verEl.style.opacity=clamp(vp*1.3,0,1);
+  verEl.setAttribute('transform',`translate(0 ${lerp(14,0,ve).toFixed(2)})`);
+
+  const boost=clamp(energy*0.5+ph(c,T.reveal)*0.6,0,1);
+  gl.uniform2f(U.res,canvas.width,canvas.height);
+  gl.uniform1f(U.time,tSec);
+  gl.uniform1f(U.boost,boost);
+  gl.drawArrays(gl.TRIANGLES,0,3);
+
+  requestAnimationFrame(frame);
+}
+
+setBox(0,0);
+function boot(){layout();start=performance.now();requestAnimationFrame(frame);}
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(boot);else boot();
+setTimeout(layout,500);
+document.getElementById('replay').onclick=()=>{start=performance.now();};
+</script>
+</body>
+</html>
